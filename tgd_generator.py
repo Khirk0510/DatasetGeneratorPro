@@ -77,7 +77,7 @@ class TGDScriptGenerator:
             for _, row in self.training_data.iterrows():
                 try:
                     script_value = row['TGDScript']
-                    if pd.notna(script_value):
+                    if script_value is not None and str(script_value).strip() != '' and str(script_value) != 'nan':
                         script_str = str(script_value).strip()
                         if len(script_str) > 0:
                             pattern = {

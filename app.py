@@ -4,19 +4,19 @@ import io
 from tgd_generator import TGDScriptGenerator
 from utils import validate_csv_structure, format_japanese_text
 
-# ページ設定
+# Cấu hình trang
 st.set_page_config(
-    page_title="TGDScript自動生成ツール",
+    page_title="Công cụ tự động tạo TGDScript",
     page_icon="📊",
     layout="wide"
 )
 
-# メインタイトル
-st.title("📊 TGDScript自動生成ツール")
+# Tiêu đề chính
+st.title("📊 Công cụ tự động tạo TGDScript")
 st.markdown("---")
 
-# サイドバー設定
-st.sidebar.header("⚙️ 設定")
+# Cài đặt thanh bên
+st.sidebar.header("⚙️ Cài đặt")
 
 # セッション状態の初期化
 if 'uploaded_data' not in st.session_state:
@@ -26,12 +26,12 @@ if 'generated_data' not in st.session_state:
 if 'generator' not in st.session_state:
     st.session_state.generator = None
 
-# ファイルアップロード
-st.header("1. 📁 トレーニングデータのアップロード")
+# Tải file lên
+st.header("1. 📁 Tải lên dữ liệu huấn luyện")
 uploaded_file = st.file_uploader(
-    "CSVファイルを選択してください",
+    "Chọn file CSV",
     type=['csv'],
-    help="TGDScriptのトレーニングデータが含まれるCSVファイルをアップロードしてください"
+    help="Tải lên file CSV chứa dữ liệu huấn luyện TGDScript"
 )
 
 if uploaded_file is not None:
@@ -43,127 +43,144 @@ if uploaded_file is not None:
         is_valid, message = validate_csv_structure(df)
         
         if is_valid:
-            st.success("✅ CSVファイルが正常に読み込まれました")
+            st.success("✅ File CSV đã được tải lên thành công")
             st.session_state.uploaded_data = df
             st.session_state.generator = TGDScriptGenerator(df)
             
-            # データプレビュー
-            with st.expander("📋 データプレビュー", expanded=False):
-                st.write(f"**総レコード数:** {len(df)}")
-                st.write(f"**カラム数:** {len(df.columns)}")
+            # Xem trước dữ liệu
+            with st.expander("📋 Xem trước dữ liệu", expanded=False):
+                st.write(f"**Tổng số dòng:** {len(df)}")
+                st.write(f"**Số cột:** {len(df.columns)}")
                 st.dataframe(df.head(10))
                 
         else:
-            st.error(f"❌ CSVファイルの構造に問題があります: {message}")
+            st.error(f"❌ Có lỗi trong cấu trúc file CSV: {message}")
             
     except Exception as e:
-        st.error(f"❌ ファイルの読み込みエラー: {str(e)}")
+        st.error(f"❌ Lỗi đọc file: {str(e)}")
 
-# データ生成セクション
+# Phần tạo dữ liệu
 if st.session_state.uploaded_data is not None and st.session_state.generator is not None:
     st.markdown("---")
-    st.header("2. 🔧 データ生成設定")
+    st.header("2. 🔧 Cài đặt tạo dữ liệu")
     
     col1, col2 = st.columns(2)
     
     with col1:
-        # 生成数の設定
+        # Cài đặt số lượng tạo
         num_generate = st.number_input(
-            "生成するレコード数",
+            "Số lượng bản ghi cần tạo",
             min_value=1,
             max_value=1000,
             value=50,
-            help="生成したいTGDScriptレコードの数を指定してください"
+            help="Chỉ định số lượng bản ghi TGDScript muốn tạo"
         )
         
-        # バリエーション設定
+        # Cài đặt mức độ đa dạng
         variation_level = st.selectbox(
-            "バリエーションレベル",
-            ["低", "中", "高"],
+            "Mức độ đa dạng",
+            ["Thấp", "Trung bình", "Cao"],
             index=1,
-            help="生成されるスクリプトの多様性レベルを選択してください"
+            help="Chọn mức độ đa dạng của các script được tạo"
         )
     
     with col2:
-        # テーブル名の多様化
+        # Đa dạng hóa tên bảng
         diversify_tables = st.checkbox(
-            "テーブル名を多様化",
+            "Đa dạng hóa tên bảng",
             value=True,
-            help="既存のテーブル名を基に新しいテーブル名を生成します"
+            help="Tạo tên bảng mới dựa trên các tên bảng hiện có"
         )
         
-        # カラム名の多様化
+        # Đa dạng hóa tên cột
         diversify_columns = st.checkbox(
-            "カラム名を多様化",
+            "Đa dạng hóa tên cột",
             value=True,
-            help="既存のカラム名を基に新しいカラム名を生成します"
+            help="Tạo tên cột mới dựa trên các tên cột hiện có"
         )
         
-        # シナリオの多様化
+        # Đa dạng hóa kịch bản
         diversify_scenarios = st.checkbox(
-            "分析シナリオを多様化",
+            "Đa dạng hóa kịch bản phân tích",
             value=True,
-            help="既存のシナリオを基に新しい分析シナリオを生成します"
+            help="Tạo kịch bản phân tích mới dựa trên các kịch bản hiện có"
         )
     
-    # 生成ボタン
-    if st.button("🚀 TGDScriptを生成", type="primary"):
-        with st.spinner("TGDScriptを生成中..."):
+    # Nút tạo
+    if st.button("🚀 Tạo TGDScript", type="primary"):
+        with st.spinner("Đang tạo TGDScript..."):
             try:
+                # Mapping level từ tiếng Việt sang tiếng Anh
+                level_mapping = {"Thấp": "low", "Trung bình": "medium", "Cao": "high"}
+                level_en = level_mapping.get(variation_level, "medium")
+                
                 generated_df = st.session_state.generator.generate_scripts(
                     num_scripts=num_generate,
-                    variation_level=variation_level.lower(),
+                    variation_level=level_en,
                     diversify_tables=diversify_tables,
                     diversify_columns=diversify_columns,
                     diversify_scenarios=diversify_scenarios
                 )
                 
                 st.session_state.generated_data = generated_df
-                st.success(f"✅ {len(generated_df)}件のTGDScriptが生成されました！")
+                st.success(f"✅ Đã tạo {len(generated_df)} TGDScript thành công!")
                 
             except Exception as e:
-                st.error(f"❌ 生成エラー: {str(e)}")
+                st.error(f"❌ Lỗi tạo dữ liệu: {str(e)}")
 
-# 生成結果の表示
+# Hiển thị kết quả tạo
 if st.session_state.generated_data is not None:
     st.markdown("---")
-    st.header("3. 📊 生成結果")
+    st.header("3. 📊 Kết quả tạo")
     
     generated_df = st.session_state.generated_data
     
-    # 統計情報
+    # Thông tin thống kê
     col1, col2, col3, col4 = st.columns(4)
     with col1:
-        st.metric("生成レコード数", len(generated_df))
+        st.metric("Số bản ghi đã tạo", len(generated_df))
     with col2:
-        unique_tables = generated_df['テーブル名（日本語）'].nunique()
-        st.metric("ユニークテーブル数", unique_tables)
+        if 'テーブル名（日本語）' in generated_df.columns:
+            unique_tables = int(generated_df['テーブル名（日本語）'].nunique())
+            st.metric("Số bảng duy nhất", unique_tables)
+        else:
+            st.metric("Số bảng duy nhất", 0)
     with col3:
-        unique_scenarios = generated_df['分析シナリオ'].nunique()
-        st.metric("ユニークシナリオ数", unique_scenarios)
+        if '分析シナリオ' in generated_df.columns:
+            unique_scenarios = int(generated_df['分析シナリオ'].nunique())
+            st.metric("Số kịch bản duy nhất", unique_scenarios)
+        else:
+            st.metric("Số kịch bản duy nhất", 0)
     with col4:
-        avg_script_length = generated_df['TGDScript'].str.len().mean()
-        st.metric("平均スクリプト長", f"{avg_script_length:.0f}文字")
+        if 'TGDScript' in generated_df.columns:
+            avg_script_length = float(generated_df['TGDScript'].str.len().mean())
+            st.metric("Độ dài script trung bình", f"{avg_script_length:.0f} ký tự")
+        else:
+            st.metric("Độ dài script trung bình", "0 ký tự")
     
-    # データプレビュー
-    st.subheader("📋 生成データプレビュー")
+    # Xem trước dữ liệu
+    st.subheader("📋 Xem trước dữ liệu đã tạo")
     
-    # フィルタリングオプション
-    with st.expander("🔍 フィルタリングオプション", expanded=False):
+    # Tùy chọn lọc
+    with st.expander("🔍 Tùy chọn lọc", expanded=False):
         filter_col1, filter_col2 = st.columns(2)
         
         with filter_col1:
+            if 'テーブル名（日本語）' in generated_df.columns:
+                table_options = ["Tất cả"] + list(generated_df['テーブル名（日本語）'].unique())
+            else:
+                table_options = ["Tất cả"]
             selected_table = st.selectbox(
-                "テーブルでフィルタ",
-                ["すべて"] + list(generated_df['テーブル名（日本語）'].unique()),
+                "Lọc theo bảng",
+                table_options,
                 index=0
             )
         
         with filter_col2:
             show_columns = st.multiselect(
-                "表示カラムを選択",
+                "Chọn cột hiển thị",
                 generated_df.columns.tolist(),
-                default=['テーブル名（日本語）', '分析シナリオ', 'TGDScript']
+                default=['テーブル名（日本語）', '分析シナリオ', 'TGDScript'] if all(col in generated_df.columns for col in ['テーブル名（日本語）', '分析シナリオ', 'TGDScript']) else generated_df.columns.tolist()[:3]
             )
     
     # データのフィルタリング
