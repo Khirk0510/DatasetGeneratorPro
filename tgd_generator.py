@@ -158,6 +158,40 @@ class TGDScriptGenerator:
         
         return list(set(variations))
     
+    def _extract_clean_script(self, raw_script: str) -> str:
+        """TGDScriptから<thinking>部分を除去して純粋なスクリプトのみ抽出"""
+        if not raw_script or not isinstance(raw_script, str):
+            return ""
+        
+        # <thinking>...</thinking>部分を除去
+        script = raw_script
+        
+        # <thinking>タグがある場合は除去
+        if '<thinking>' in script:
+            # </thinking>以降を取得
+            if '</thinking>' in script:
+                script = script.split('</thinking>', 1)[1]
+            else:
+                # </thinking>がない場合は<thinking>以降を削除
+                script = script.split('<thinking>', 1)[0]
+        
+        # <|end|>タグを除去
+        if '<|end|>' in script:
+            script = script.split('<|end|>', 1)[1]
+        
+        # ```tgdタグを除去
+        if '```tgd' in script:
+            script = script.split('```tgd', 1)[1]
+        
+        # 末尾の```を除去
+        if script.endswith('```'):
+            script = script[:-3]
+        
+        # 不要な改行や空白を除去
+        script = script.strip()
+        
+        return script
+    
     def _generate_tgd_script(self, table_jp: str, table_en: str, columns_jp: str, 
                            columns_en: str, scenario: str, base_script: str) -> str:
         """TGDScriptを生成 - テーブル名とカラム名を正確に置換"""
