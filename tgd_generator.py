@@ -78,9 +78,9 @@ class TGDScriptGenerator:
                 try:
                     script_value = row['TGDScript']
                     # より厳密なチェック：空でない実際のスクリプトのみを抽出
-                    script_str = str(script_value) if pd.notna(script_value) else ""
-                    if script_str and script_str.strip() != "" and script_str != 'nan' and len(script_str.strip()) > 10:
-                            
+                    if pd.notna(script_value):
+                        script_str = str(script_value).strip()
+                        if len(script_str) > 10 and script_str != 'nan':
                             # <thinking>タグを除去して純粋なスクリプト部分のみ抽出
                             clean_script = self._extract_clean_script(script_str)
                             
@@ -229,68 +229,40 @@ OUTPUT "{table_jp}_summary"'''
         if not base_script:
             base_script = self._create_default_template(table_jp, columns_jp)
             
-        # ベーススクリプトから構造を抽出
-        script_lines = base_script.strip().split('\n')
-        new_script_lines = []
+        # 新しいカラム名のリストを準備
+        new_columns = [c.strip() for c in columns_jp.split(',') if c.strip()] if columns_jp else ['金額', '日付', 'コード']
         
-        # カラム名のリストを準備
-        jp_cols = [c.strip() for c in columns_jp.split(',') if c.strip()] if columns_jp else []
+        # 元のスクリプトから使用されているテーブル名を抽出
+        original_table_matches = re.findall(r'""([^""]+)""', base_script)
+        original_table = original_table_matches[0] if original_table_matches else ""
         
-        for line in script_lines:
-            new_line = line
-            
-            # OPEN文の処理 - テーブル名を置換
-            if 'OPEN' in line and '""' in line:
-                # 最初の""内のテーブル名を新しいテーブル名に置換
-                new_line = re.sub(r'OPEN\s+""([^""]*)""', f'OPEN ""{table_jp}""', line)
-            
-            # EXTRACT文の処理 - カラム名を置換
-            elif 'EXTRACT' in line:
-                # [カラム名]の形式を見つけて置換
-                column_matches = re.findall(r'\[([^\]]+)\]', line)
-                if column_matches and jp_cols:
-                    for i, match in enumerate(column_matches):
-                        if i < len(jp_cols):
-                            # 元のカラム名を新しいカラム名に置換
-                            new_line = new_line.replace(f'[{match}]', f'[{jp_cols[i]}]')
-                        else:
-                            # カラムが足りない場合はランダムに選択
-                            replacement_col = random.choice(jp_cols)
-                            new_line = new_line.replace(f'[{match}]', f'[{replacement_col}]')
-            
-            # SUMMARIZE文の処理 - カラム名を置換
-            elif 'SUMMARIZE' in line:
-                column_matches = re.findall(r'\[([^\]]+)\]', line)
-                if column_matches and jp_cols:
-                    for i, match in enumerate(column_matches):
-                        if i < len(jp_cols):
-                            new_line = new_line.replace(f'[{match}]', f'[{jp_cols[i]}]')
-                        else:
-                            replacement_col = random.choice(jp_cols)
-                            new_line = new_line.replace(f'[{match}]', f'[{replacement_col}]')
-            
-            # TO文の出力先パス調整 - テーブル名を含むパスを更新
-            if 'TO "' in line:
-                # パス内のテーブル名を置換
-                match = re.search(r'TO "([^"]*)"', line)
-                if match:
-                    original_path = match.group(1)
-                    # パス内の既存のテーブル名を新しいテーブル名に置換
-                    new_path = original_path
-                    # 一般的なテーブル名パターンを置換
-                    common_table_names = ['入金データ', '売上データ', '購買データ', '在庫データ', '顧客データ']
-                    for common_name in common_table_names:
-                        if common_name in new_path:
-                            new_path = new_path.replace(common_name, table_jp)
-                            break
-                    
-                    # パスが変更された場合のみ置換
-                    if new_path != original_path:
-                        new_line = line.replace(original_path, new_path)
-            
-            new_script_lines.append(new_line)
+        # 元のスクリプトから使用されているカラム名を抽出
+        original_columns = re.findall(r'\[([^\]]+)\]', base_script)
         
-        return '\n'.join(new_script_lines)
+        # スクリプト全体を処理
+        new_script = base_script
+        
+        # 1. テーブル名を置換 (""で囲まれた部分)
+        if original_table:
+            new_script = new_script.replace(f'"{original_table}"', f'"{table_jp}"')
+        
+        # 2. カラム名を置換 ([]で囲まれた部分)
+        for i, original_col in enumerate(original_columns):
+            if i < len(new_columns):
+                replacement_col = new_columns[i]
+            else:
+                # カラムが足りない場合はランダムに選択
+                replacement_col = random.choice(new_columns)
+            
+            # 元のカラム名を新しいカラム名に置換
+            new_script = new_script.replace(f'[{original_col}]', f'[{replacement_col}]')
+        
+        # 3. パス内のテーブル名も置換
+        if original_table:
+            # パス内のテーブル名を新しいテーブル名に置換
+            new_script = new_script.replace(original_table, table_jp)
+        
+        return new_script
     
     def generate_scripts(self, num_scripts: int = 50, 
                         variation_level: str = "medium",
