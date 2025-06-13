@@ -75,17 +75,23 @@ class TGDScriptGenerator:
         
         if 'TGDScript' in self.training_data.columns:
             for _, row in self.training_data.iterrows():
-                if pd.notna(row.get('TGDScript')):
-                    pattern = {
-                        'script': row['TGDScript'],
-                        'table_jp': row.get('テーブル名（日本語）', ''),
-                        'table_en': row.get('テーブル名（英語）', ''),
-                        'columns_jp': row.get('カラム名（日）', ''),
-                        'columns_en': row.get('カラム名（英）', ''),
-                        'scenario': row.get('分析シナリオ', ''),
-                        'procedure': row.get('具体的手続', '')
-                    }
-                    patterns.append(pattern)
+                try:
+                    script_value = row['TGDScript']
+                    if pd.notna(script_value):
+                        script_str = str(script_value).strip()
+                        if len(script_str) > 0:
+                            pattern = {
+                                'script': script_str,
+                                'table_jp': str(row.get('テーブル名（日本語）', '')),
+                                'table_en': str(row.get('テーブル名（英語）', '')),
+                                'columns_jp': str(row.get('カラム名（日）', '')),
+                                'columns_en': str(row.get('カラム名（英）', '')),
+                                'scenario': str(row.get('分析シナリオ', '')),
+                                'procedure': str(row.get('具体的手続', ''))
+                            }
+                            patterns.append(pattern)
+                except Exception:
+                    continue
         
         return patterns
     
@@ -154,54 +160,68 @@ class TGDScriptGenerator:
     
     def _generate_tgd_script(self, table_jp: str, table_en: str, columns_jp: str, 
                            columns_en: str, scenario: str, base_script: str) -> str:
-        """TGDScriptを生成"""
+        """TGDScriptを生成 - テーブル名とカラム名を正確に置換"""
         
+        if not base_script or not isinstance(base_script, str):
+            return ""
+            
         # ベーススクリプトから構造を抽出
         script_lines = base_script.strip().split('\n')
-        
-        # 新しいスクリプトを構築
         new_script_lines = []
+        
+        # カラム名のリストを準備
+        jp_cols = [c.strip() for c in columns_jp.split(',') if c.strip()] if columns_jp else []
         
         for line in script_lines:
             new_line = line
             
-            # OPEN文の処理
+            # OPEN文の処理 - テーブル名を置換
             if 'OPEN' in line and '""' in line:
-                # テーブル名を置換
-                new_line = re.sub(r'""[^""]*""', f'"{table_jp}"', line, count=1)
+                # 最初の""内のテーブル名を新しいテーブル名に置換
+                new_line = re.sub(r'OPEN\s+""([^""]*)""', f'OPEN ""{table_jp}""', line)
             
-            # EXTRACT文の処理
+            # EXTRACT文の処理 - カラム名を置換
             elif 'EXTRACT' in line:
-                # カラム名を動的に置換
-                if '[' in line and ']' in line:
-                    # 条件部分のカラム名を置換
-                    jp_cols = [c.strip() for c in columns_jp.split(',') if c.strip()]
-                    if jp_cols:
-                        # ランダムにカラムを選択して条件を生成
-                        selected_col = random.choice(jp_cols)
-                        
-                        # 条件の種類をランダムに選択
-                        conditions = ['= ""1""', '<> """"', '> 0', '< 1000', 'IS NULL', 'IS NOT NULL']
-                        condition = random.choice(conditions)
-                        
-                        # 条件部分を置換
-                        new_line = re.sub(r'\[[^\]]+\]\s*[=<>!]+\s*"[^"]*"', 
-                                        f'[{selected_col}] {condition}', line)
+                # [カラム名]の形式を見つけて置換
+                column_matches = re.findall(r'\[([^\]]+)\]', line)
+                if column_matches and jp_cols:
+                    for i, match in enumerate(column_matches):
+                        if i < len(jp_cols):
+                            # 元のカラム名を新しいカラム名に置換
+                            new_line = new_line.replace(f'[{match}]', f'[{jp_cols[i]}]')
+                        else:
+                            # カラムが足りない場合はランダムに選択
+                            replacement_col = random.choice(jp_cols)
+                            new_line = new_line.replace(f'[{match}]', f'[{replacement_col}]')
             
-            # TO文の出力先パス調整
+            # SUMMARIZE文の処理 - カラム名を置換
+            elif 'SUMMARIZE' in line:
+                column_matches = re.findall(r'\[([^\]]+)\]', line)
+                if column_matches and jp_cols:
+                    for i, match in enumerate(column_matches):
+                        if i < len(jp_cols):
+                            new_line = new_line.replace(f'[{match}]', f'[{jp_cols[i]}]')
+                        else:
+                            replacement_col = random.choice(jp_cols)
+                            new_line = new_line.replace(f'[{match}]', f'[{replacement_col}]')
+            
+            # TO文の出力先パス調整 - テーブル名を含むパスを更新
             if 'TO "' in line:
-                # 出力先のパスを調整
+                # パス内のテーブル名を置換
                 match = re.search(r'TO "([^"]*)"', line)
                 if match:
                     original_path = match.group(1)
-                    # パスの一部を動的に変更
-                    path_parts = original_path.split('\\')
-                    if len(path_parts) > 2:
-                        # ファイル名部分を変更
-                        filename = path_parts[-1]
-                        new_filename = filename.replace('入金データ', table_jp)
-                        path_parts[-1] = new_filename
-                        new_path = '\\'.join(path_parts)
+                    # パス内の既存のテーブル名を新しいテーブル名に置換
+                    new_path = original_path
+                    # 一般的なテーブル名パターンを置換
+                    common_table_names = ['入金データ', '売上データ', '購買データ', '在庫データ', '顧客データ']
+                    for common_name in common_table_names:
+                        if common_name in new_path:
+                            new_path = new_path.replace(common_name, table_jp)
+                            break
+                    
+                    # パスが変更された場合のみ置換
+                    if new_path != original_path:
                         new_line = line.replace(original_path, new_path)
             
             new_script_lines.append(new_line)
@@ -214,7 +234,7 @@ class TGDScriptGenerator:
                         diversify_columns: bool = True,
                         diversify_scenarios: bool = True) -> pd.DataFrame:
         """
-        TGDScriptを生成
+        TGDScriptを生成 - 既存データを基に新しいTGDScriptのみ生成
         
         Args:
             num_scripts: 生成するスクリプト数
@@ -227,93 +247,68 @@ class TGDScriptGenerator:
             生成されたデータのDataFrame
         """
         
-        # バリエーションの生成
-        tables_jp = self.table_patterns['japanese'].copy()
-        tables_en = self.table_patterns['english'].copy()
-        columns_jp = self.column_patterns['japanese'].copy()
-        columns_en = self.column_patterns['english'].copy()
-        scenarios = self.scenario_patterns.copy()
+        # 元のデータをコピー
+        original_data = self.training_data.copy()
+        generated_rows = []
         
-        if diversify_tables:
-            tables_jp = self._generate_table_variations(tables_jp)
-            # 英語テーブル名も簡単に生成
-            en_mapping = {'データ': 'data', 'マスタ': 'master', 'テーブル': 'table', 
-                         '情報': 'info', '管理': 'management'}
-            for jp_table in tables_jp:
-                en_table = jp_table
-                for jp, en in en_mapping.items():
-                    en_table = en_table.replace(jp, en)
-                tables_en.append(en_table)
-        
-        if diversify_columns:
-            columns_jp = self._generate_column_variations(columns_jp)
-            # 英語カラム名も簡単に生成
-            en_col_mapping = {'番号': 'Number', 'コード': 'Code', '名': 'Name', 
-                            '日': 'Date', '金額': 'Amount', 'フラグ': 'Flag'}
-            for jp_col in columns_jp:
-                en_col = jp_col
-                for jp, en in en_col_mapping.items():
-                    en_col = en_col.replace(jp, en)
-                columns_en.append(en_col)
-        
-        if diversify_scenarios:
-            scenarios = self._generate_scenario_variations(scenarios)
-        
-        # 生成データのリスト
-        generated_data = []
-        
+        # 指定された数だけデータを生成
         for i in range(num_scripts):
-            # ベースパターンをランダム選択
-            base_pattern = random.choice(self.script_patterns)
+            # 既存データからランダムに1行を選択
+            base_row = original_data.sample(n=1).iloc[0].copy()
             
-            # テーブル名の選択
-            table_jp = random.choice(tables_jp) if tables_jp else "データテーブル"
-            table_en = random.choice(tables_en) if tables_en else "data_table"
+            # 基本情報を取得
+            table_jp = base_row.get('テーブル名（日本語）', '')
+            table_en = base_row.get('テーブル名（英語）', '')
+            columns_jp = base_row.get('カラム名（日）', '')
+            columns_en = base_row.get('カラム名（英）', '')
+            scenario = base_row.get('分析シナリオ', '')
+            procedure = base_row.get('具体的手続', '')
+            original_script = base_row.get('TGDScript', '')
             
-            # カラム名の選択（複数をランダムに組み合わせ）
-            num_columns = random.randint(3, 8)
-            selected_columns_jp = random.sample(columns_jp, min(num_columns, len(columns_jp)))
-            selected_columns_en = random.sample(columns_en, min(num_columns, len(columns_en)))
+            # バリエーションを生成する場合
+            if diversify_tables and random.random() < 0.3:  # 30%の確率でテーブル名を変更
+                variations = self._generate_table_variations([table_jp])
+                if len(variations) > 1:
+                    table_jp = random.choice([t for t in variations if t != table_jp])
+                    # 英語名も調整
+                    en_mapping = {'データ': 'data', 'マスタ': 'master', 'テーブル': 'table', 
+                                 '情報': 'info', '管理': 'management'}
+                    table_en = table_jp
+                    for jp, en in en_mapping.items():
+                        table_en = table_en.replace(jp, en)
             
-            columns_jp_str = ",".join(selected_columns_jp)
-            columns_en_str = ",".join(selected_columns_en)
+            if diversify_columns and random.random() < 0.4:  # 40%の確率でカラム名を変更
+                jp_cols = [c.strip() for c in columns_jp.split(',') if c.strip()]
+                if jp_cols:
+                    variations = self._generate_column_variations(jp_cols)
+                    new_cols = random.sample(variations, min(len(jp_cols), len(variations)))
+                    columns_jp = ','.join(new_cols)
+                    
+                    # 英語カラム名も調整
+                    en_col_mapping = {'番号': 'Number', 'コード': 'Code', '名': 'Name', 
+                                    '日': 'Date', '金額': 'Amount', 'フラグ': 'Flag'}
+                    en_cols = []
+                    for jp_col in new_cols:
+                        en_col = jp_col
+                        for jp, en in en_col_mapping.items():
+                            en_col = en_col.replace(jp, en)
+                        en_cols.append(en_col)
+                    columns_en = ','.join(en_cols)
             
-            # シナリオの選択
-            scenario = random.choice(scenarios) if scenarios else "データの整合性を確認する"
-            
-            # 仮説の生成
-            hypothesis = f"{table_jp}において、{random.choice(['データの不整合', '入力ミス', '処理の誤り', '承認漏れ', '重複データ'])}が存在する"
-            
-            # 説明文の生成
-            explanation = f"{hypothesis}場合、不正処理、入力ミス、業務運用の逸脱、{table_jp}との不整合などの問題が発生する可能性がある"
-            
-            # 具体的手続の生成
-            procedure_templates = [
-                f"1. {table_jp}を開く\n2. 条件に該当するレコードを抽出\n3. 抽出結果を出力し、件数を集計して確認",
-                f"1. {table_jp}を開く\n2. 特定の条件でデータをフィルタリング\n3. 結果を別ファイルに保存し、詳細確認",
-                f"1. {table_jp}を開く\n2. データの整合性をチェック\n3. 不整合データを抽出して分析"
-            ]
-            procedure = random.choice(procedure_templates)
-            
-            # TGDScriptの生成
-            tgd_script = self._generate_tgd_script(
-                table_jp, table_en, columns_jp_str, columns_en_str, 
-                scenario, base_pattern['script']
+            # TGDScriptを生成（テーブル名とカラム名を置換）
+            new_script = self._generate_tgd_script(
+                table_jp, table_en, columns_jp, columns_en, 
+                scenario, original_script
             )
             
-            # データレコードの作成
-            record = {
-                'テーブル名（日本語）': table_jp,
-                'テーブル名（英語）': table_en,
-                'カラム名（日）': columns_jp_str,
-                'カラム名（英）': columns_en_str,
-                '仮説': hypothesis,
-                '分析シナリオ': scenario,
-                '説明文': explanation,
-                '具体的手続': procedure,
-                'TGDScript': tgd_script
-            }
+            # 新しい行を作成（既存の行をベースに、TGDScriptのみ更新）
+            new_row = base_row.copy()
+            new_row['テーブル名（日本語）'] = table_jp
+            new_row['テーブル名（英語）'] = table_en
+            new_row['カラム名（日）'] = columns_jp
+            new_row['カラム名（英）'] = columns_en
+            new_row['TGDScript'] = new_script
             
-            generated_data.append(record)
+            generated_rows.append(new_row)
         
-        return pd.DataFrame(generated_data)
+        return pd.DataFrame(generated_rows)
