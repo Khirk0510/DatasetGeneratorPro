@@ -95,6 +95,19 @@ class TGDScriptGenerator:
         
         return patterns
     
+    def _create_default_template(self, table_jp: str, columns_jp: str) -> str:
+        """デフォルトのTGDScriptテンプレートを生成"""
+        # カラム名を解析
+        cols = [c.strip() for c in columns_jp.split(',') if c.strip()] if columns_jp else ['金額', '日付', 'コード']
+        
+        # 基本的なTGDScriptテンプレート
+        template = f'''OPEN "{table_jp}"
+EXTRACT ALL
+SUMMARIZE ON [{cols[0]}]
+OUTPUT "{table_jp}_summary"'''
+        
+        return template
+    
     def _generate_table_variations(self, base_tables: List[str]) -> List[str]:
         """テーブル名のバリエーションを生成"""
         variations = base_tables.copy()
@@ -196,8 +209,20 @@ class TGDScriptGenerator:
                            columns_en: str, scenario: str, base_script: str) -> str:
         """TGDScriptを生成 - テーブル名とカラム名を正確に置換"""
         
-        if not base_script or not isinstance(base_script, str):
-            return ""
+        # base_scriptが空または無効な場合、利用可能なスクリプトパターンから選択
+        if not base_script or not isinstance(base_script, str) or str(base_script).strip() == '' or str(base_script) == 'nan':
+            if self.script_patterns:
+                # 利用可能なスクリプトパターンからランダムに選択
+                random_pattern = random.choice(self.script_patterns)
+                base_script = random_pattern['script']
+            else:
+                # デフォルトのテンプレートスクリプトを使用
+                base_script = self._create_default_template(table_jp, columns_jp)
+        
+        # NaN値や空文字列を文字列に変換
+        base_script = str(base_script).strip()
+        if not base_script:
+            base_script = self._create_default_template(table_jp, columns_jp)
             
         # ベーススクリプトから構造を抽出
         script_lines = base_script.strip().split('\n')
