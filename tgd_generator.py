@@ -77,19 +77,24 @@ class TGDScriptGenerator:
             for _, row in self.training_data.iterrows():
                 try:
                     script_value = row['TGDScript']
-                    if script_value is not None and str(script_value).strip() != '' and str(script_value) != 'nan':
-                        script_str = str(script_value).strip()
-                        if len(script_str) > 0:
-                            pattern = {
-                                'script': script_str,
-                                'table_jp': str(row.get('テーブル名（日本語）', '')),
-                                'table_en': str(row.get('テーブル名（英語）', '')),
-                                'columns_jp': str(row.get('カラム名（日）', '')),
-                                'columns_en': str(row.get('カラム名（英）', '')),
-                                'scenario': str(row.get('分析シナリオ', '')),
-                                'procedure': str(row.get('具体的手続', ''))
-                            }
-                            patterns.append(pattern)
+                    # より厳密なチェック：空でない実際のスクリプトのみを抽出
+                    script_str = str(script_value) if pd.notna(script_value) else ""
+                    if script_str and script_str.strip() != "" and script_str != 'nan' and len(script_str.strip()) > 10:
+                            
+                            # <thinking>タグを除去して純粋なスクリプト部分のみ抽出
+                            clean_script = self._extract_clean_script(script_str)
+                            
+                            if len(clean_script) > 0:
+                                pattern = {
+                                    'script': clean_script,
+                                    'table_jp': str(row.get('テーブル名（日本語）', '')),
+                                    'table_en': str(row.get('テーブル名（英語）', '')),
+                                    'columns_jp': str(row.get('カラム名（日）', '')),
+                                    'columns_en': str(row.get('カラム名（英）', '')),
+                                    'scenario': str(row.get('分析シナリオ', '')),
+                                    'procedure': str(row.get('具体的手続', ''))
+                                }
+                                patterns.append(pattern)
                 except Exception:
                     continue
         
@@ -310,10 +315,43 @@ OUTPUT "{table_jp}_summary"'''
         original_data = self.training_data.copy()
         generated_rows = []
         
+        # TGDScriptが存在する行のみをフィルタリング
+        valid_script_rows = original_data[
+            original_data['TGDScript'].notna() & 
+            (original_data['TGDScript'].astype(str).str.strip() != '') &
+            (original_data['TGDScript'].astype(str) != 'nan')
+        ]
+        
+        # 有効なスクリプトが存在しない場合の処理
+        if len(valid_script_rows) == 0:
+            # 全ての行からランダムに選択し、デフォルトテンプレートを使用
+            for i in range(num_scripts):
+                base_row = original_data.sample(n=1).iloc[0].copy()
+                
+                table_jp = str(base_row.get('テーブル名（日本語）', ''))
+                table_en = str(base_row.get('テーブル名（英語）', ''))
+                columns_jp = str(base_row.get('カラム名（日）', ''))
+                columns_en = str(base_row.get('カラム名（英）', ''))
+                scenario = str(base_row.get('分析シナリオ', ''))
+                
+                # デフォルトテンプレートを使用
+                new_script = self._create_default_template(table_jp, columns_jp)
+                
+                new_row = base_row.copy()
+                new_row['テーブル名（日本語）'] = table_jp
+                new_row['テーブル名（英語）'] = table_en
+                new_row['カラム名（日）'] = columns_jp
+                new_row['カラム名（英）'] = columns_en
+                new_row['TGDScript'] = new_script
+                
+                generated_rows.append(new_row)
+            
+            return pd.DataFrame(generated_rows)
+        
         # 指定された数だけデータを生成
         for i in range(num_scripts):
-            # 既存データからランダムに1行を選択
-            base_row = original_data.sample(n=1).iloc[0].copy()
+            # 有効なスクリプトを持つ行からランダムに選択
+            base_row = valid_script_rows.sample(n=1).iloc[0].copy()
             
             # 基本情報を取得
             table_jp = base_row.get('テーブル名（日本語）', '')
