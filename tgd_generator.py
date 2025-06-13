@@ -238,16 +238,21 @@ OUTPUT "{table_jp}_summary"'''
         
         # 元のスクリプトから使用されているカラム名を抽出
         original_columns = re.findall(r'\[([^\]]+)\]', base_script)
+        # 重複を除去
+        unique_original_columns = list(dict.fromkeys(original_columns))
         
         # スクリプト全体を処理
         new_script = base_script
         
-        # 1. テーブル名を置換 (""で囲まれた部分)
+        # 1. テーブル名を置換 (全ての箇所で)
         if original_table:
+            # ""で囲まれた部分
             new_script = new_script.replace(f'"{original_table}"', f'"{table_jp}"')
+            # テキスト内の全ての箇所
+            new_script = new_script.replace(original_table, table_jp)
         
         # 2. カラム名を置換 ([]で囲まれた部分)
-        for i, original_col in enumerate(original_columns):
+        for i, original_col in enumerate(unique_original_columns):
             if i < len(new_columns):
                 replacement_col = new_columns[i]
             else:
@@ -256,11 +261,6 @@ OUTPUT "{table_jp}_summary"'''
             
             # 元のカラム名を新しいカラム名に置換
             new_script = new_script.replace(f'[{original_col}]', f'[{replacement_col}]')
-        
-        # 3. パス内のテーブル名も置換
-        if original_table:
-            # パス内のテーブル名を新しいテーブル名に置換
-            new_script = new_script.replace(original_table, table_jp)
         
         return new_script
     
@@ -364,19 +364,37 @@ OUTPUT "{table_jp}_summary"'''
                         en_cols.append(en_col)
                     columns_en = ','.join(en_cols)
             
+            # 元のテーブル名を取得（置換前）
+            original_table_jp = base_row.get('テーブル名（日本語）', '')
+            
             # TGDScriptを生成（テーブル名とカラム名を置換）
             new_script = self._generate_tgd_script(
                 table_jp, table_en, columns_jp, columns_en, 
                 scenario, original_script
             )
             
-            # 新しい行を作成（既存の行をベースに、TGDScriptのみ更新）
+            # 新しい行を作成（全てのテキストフィールドでテーブル名を置換）
             new_row = base_row.copy()
             new_row['テーブル名（日本語）'] = table_jp
             new_row['テーブル名（英語）'] = table_en
             new_row['カラム名（日）'] = columns_jp
             new_row['カラム名（英）'] = columns_en
             new_row['TGDScript'] = new_script
+            
+            # 分析シナリオ内のテーブル名も置換
+            if '分析シナリオ' in new_row and original_table_jp:
+                scenario_text = str(new_row['分析シナリオ'])
+                new_row['分析シナリオ'] = scenario_text.replace(original_table_jp, table_jp)
+            
+            # 説明文内のテーブル名も置換
+            if '説明文' in new_row and original_table_jp:
+                description_text = str(new_row['説明文'])
+                new_row['説明文'] = description_text.replace(original_table_jp, table_jp)
+            
+            # 具体的手続内のテーブル名も置換
+            if '具体的手続' in new_row and original_table_jp:
+                procedure_text = str(new_row['具体的手続'])
+                new_row['具体的手続'] = procedure_text.replace(original_table_jp, table_jp)
             
             generated_rows.append(new_row)
         
